@@ -1,8 +1,8 @@
 /* Lux Home — premium Home Assistant dashboard cards
- * Tablet + phone layouts, Pool tab with live 3D model.
+ * Tablet + phone layouts, Pool tab with live 3D model, Owen tab with a live 3D model of Owen's bedroom.
  * Appearance layer only: services are called exclusively in response to a user's tap.
  */
-const LUX_VERSION = '1.3.0';
+const LUX_VERSION = '1.4.0';
 const LUX_THREE_URL = 'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.min.js';
 
 /* ───────────────────────── Icons: one family, 24 grid, 1.5 stroke ───────────────────────── */
@@ -76,6 +76,8 @@ const I = {
   dot: '<circle cx="12" cy="12" r="3"/>',
   motion: '<circle cx="13" cy="4.5" r="1.8"/><path d="m9 21 2.5-6.5 3 2.5v4.5M8 11.5l2.5-3.5h3.5l2 3.5 2.5 1M11.5 14.5 12.5 8"/>',
   gauge: '<path d="M4.2 17a9 9 0 1 1 15.6 0"/><path d="m12 13 4-4"/><circle cx="12" cy="13.5" r="1.3"/>',
+  hex: '<path d="M7.5 3.5h5l2.5 4.3-2.5 4.3h-5L5 7.8z"/><path d="M11.5 11.9h5l2.5 4.3-2.5 4.3h-5L9 16.2z"/>',
+  pc: '<rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M10 6.5h4M10 9.5h4"/><circle cx="12" cy="16" r="1.6"/>',
 };
 const icon = (name, cls = '') =>
   `<svg class="ic ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[name] || I.dot}</svg>`;
@@ -607,6 +609,23 @@ button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cu
 :host([layout=phone]) .sheet.on{transform:none}
 :host([layout=phone]) .lt-grid{grid-template-columns:1fr 1fr}
 
+/* owen */
+.hroom.orow.lit .ri{background:rgba(var(--rgb,255,196,110),.95);color:#1a1206;box-shadow:0 0 18px rgba(var(--rgb,255,196,110),.4)}
+.hroom.orow.sel{background:var(--btn-hi)}
+.hroom.orow.na .ri,.hroom.orow.na .rn{opacity:.55}
+.osheet .grp{margin-top:16px}
+.osheet .grp .sec-t{margin:0 4px 8px}
+.oswatch{display:flex;flex-wrap:wrap;gap:8px}
+.oswatch .sw{width:30px;height:30px}
+.ofx{display:flex;flex-wrap:wrap;gap:7px}
+.ofx .pill.on,.oseg .pill.on{background:var(--btn-on);color:var(--btn-on-t)}
+.oseg{display:flex;gap:7px}
+.olink{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:18px;padding-top:14px;border-top:1px solid var(--t4)}
+.ohelp{font-size:12.5px;color:var(--t2);line-height:1.45}
+.oq{width:100%;height:40px;border-radius:12px;border:1px solid var(--edge);background:var(--btn);color:var(--t1);padding:0 14px;font:inherit;font-size:14px;outline:none;user-select:text;-webkit-user-select:text;margin:12px 0 8px}
+.opick{display:flex;flex-direction:column;gap:4px;max-height:300px;overflow-y:auto;scrollbar-width:none}
+.opick .spk .ck{width:18px;height:18px;color:var(--accent)}
+
 @media (prefers-reduced-motion: reduce){
   .page,.sheet,.nav .ind,.tabbar .ind{transition:opacity .2s ease !important;transform:none !important}
   .eq i{animation:none;height:7px}
@@ -935,9 +954,10 @@ const LUX_DEFAULTS = {
   media_default: 'media_player.pool',
   exclude_lights: [],
   exclude_areas: [],
-  pages: ['home', 'rooms', 'cameras', 'media', 'pool'],
+  pages: ['home', 'rooms', 'cameras', 'media', 'pool', 'owen'],
   pool: {},
   terrace: {},
+  owen: {},
   three_url: LUX_THREE_URL,
 };
 /* Covered terrace next to the spa. Lights left null are found by name (patio/terrace + fan/chandelier/can) once they exist in HA. */
@@ -954,7 +974,7 @@ const LUX_POOL_DEFAULTS = {
 };
 const PAGE_META = {
   home: { label: 'Home', icon: 'home' }, rooms: { label: 'Rooms', icon: 'rooms' }, cameras: { label: 'Cameras', icon: 'camera' },
-  media: { label: 'Media', icon: 'music' }, pool: { label: 'Pool', icon: 'pool' },
+  media: { label: 'Media', icon: 'music' }, pool: { label: 'Pool', icon: 'pool' }, owen: { label: 'Owen', icon: 'bed' },
 };
 
 class LuxHomeCard extends HTMLElement {
@@ -980,6 +1000,7 @@ class LuxHomeCard extends HTMLElement {
     this._c = { ...LUX_DEFAULTS, ...config };
     this._c.pool = { ...LUX_POOL_DEFAULTS, ...(config.pool || {}) };
     this._c.terrace = { ...LUX_TERRACE_DEFAULTS, ...(config.terrace || {}) };
+    this._c.owen = { ...LUX_OWEN_DEFAULTS, ...(config.owen || {}) }; this._oAuto = null;
     if (this._built) { this._teardown(); this._built = false; if (this._hass) this._build(); }
   }
   getCardSize() { return 12; }
@@ -1008,10 +1029,11 @@ class LuxHomeCard extends HTMLElement {
     clearInterval(this._tick); this._ro && this._ro.disconnect(); window.removeEventListener('resize', this._onWin);
     if (this._unsubWx) { this._unsubWx.then((u) => u && u()).catch(() => {}); this._unsubWx = null; }
     if (this._pool3d) this._pool3d.setActive(false);
+    if (this._room3d) this._room3d.setActive(false);
     Object.values(this._cams || {}).forEach((c) => c.setActive(false));
     this._kiosk(false);
   }
-  _teardown() { if (this._pool3d) { this._pool3d.dispose(); this._pool3d = null; } this.shadowRoot && (this.shadowRoot.innerHTML = ''); }
+  _teardown() { if (this._pool3d) { this._pool3d.dispose(); this._pool3d = null; } if (this._room3d) { this._room3d.dispose(); this._room3d = null; } this.shadowRoot && (this.shadowRoot.innerHTML = ''); }
 
   _call(domain, service, data) {
     // Only ever invoked from a user gesture on a control.
@@ -1027,7 +1049,7 @@ class LuxHomeCard extends HTMLElement {
     const w = this.getBoundingClientRect().width || window.innerWidth;
     const lay = this._c && this._c.layout !== 'auto' ? this._c.layout : (w < 720 ? 'phone' : 'tablet');
     if (this.getAttribute('layout') !== lay) { this.setAttribute('layout', lay); if (this._built && this._navBtns) { this._rebuildPages(); } }
-    if (this._pool3d) this._pool3d.resize(); if (this._house3d) this._house3d.resize();
+    if (this._pool3d) this._pool3d.resize(); if (this._house3d) this._house3d.resize(); if (this._room3d) this._room3d.resize();
   }
 
   _kiosk(on) {
@@ -1104,6 +1126,7 @@ class LuxHomeCard extends HTMLElement {
     const box = this.$('.pages'); if (!box) return;
     if (this._pool3d) { this._pool3d.dispose(); this._pool3d = null; }
     if (this._house3d) { this._house3d.dispose(); this._house3d = null; }
+    if (this._room3d) { this._room3d.dispose(); this._room3d = null; }
     Object.values(this._cams || {}).forEach((c) => c.setActive(false));
     box.innerHTML = ''; this._pages = {}; this._cams = {};
     for (const p of this._c.pages) {
@@ -1146,17 +1169,19 @@ class LuxHomeCard extends HTMLElement {
     (pg.cams || []).forEach((c) => c.setActive(true));
     if (p === 'pool' && this._pool3d) this._pool3d.setActive(true);
     if (p === 'rooms' && this._house3d) this._house3d.setActive(true);
+    if (p === 'owen' && this._room3d) this._room3d.setActive(true);
   }
   _deactivate(p) {
     const pg = this._pages[p]; if (!pg) return;
     (pg.cams || []).forEach((c) => c.setActive(false));
     if (p === 'pool' && this._pool3d) this._pool3d.setActive(false);
     if (p === 'rooms' && this._house3d) this._house3d.setActive(false);
+    if (p === 'owen' && this._room3d) this._room3d.setActive(false);
   }
 
   _applyTheme() {
     const t = this._c.theme === 'auto' ? ((this._hass && this._hass.themes && this._hass.themes.darkMode) ? 'dark' : (this._hass && this._hass.themes && this._hass.themes.darkMode === false ? 'light' : 'dark')) : this._c.theme;
-    if (this.getAttribute('theme') !== t) { this.setAttribute('theme', t); if (this._pool3d) this._pool3d.setTheme(t === 'dark'); if (this._house3d) this._house3d.setTheme(t === 'dark'); }
+    if (this.getAttribute('theme') !== t) { this.setAttribute('theme', t); if (this._pool3d) this._pool3d.setTheme(t === 'dark'); if (this._house3d) this._house3d.setTheme(t === 'dark'); if (this._room3d) this._room3d.setTheme(t === 'dark'); }
   }
   _clock() {
     if (!this._built) return;
@@ -2917,10 +2942,802 @@ class LuxHouse3D {
     this.canvas && this.canvas.remove();
   }
 }
+/* ───────────────────────── Owen's room (tab) ─────────────────────────
+ * Built from Owen's photos of his attic bedroom. Lights he marked green: ceiling fan light, can lights
+ * on the slopes, hex panels above the headboard, both bedside lamps and the LED strip behind/along
+ * the bed. Devices he marked orange: the desk light strip under the monitors and the PC. Plus the TV
+ * above the desk. Tap an object in 3D (or its row) to open its controls; services are only called
+ * from those controls.
+ *
+ * Card config (all optional; an entity id, a list of ids, or false to hide the row):
+ *   owen: { fan, fan_light, cans, hex, bed_strip, lamp_left, lamp_right, desk_strip, pc, tv }
+ * Unset keys are found automatically among the Light Map room `owen` (house.lights), anything named
+ * "Owen…" and anything in an HA area named Owen. They can also be picked in the object's sheet
+ * (saved in that browser).
+ */
+const LUX_OWEN_DEFAULTS = { name: 'Owen’s Room', room: 'owen', fan: null, fan_light: null, cans: null, hex: null, bed_strip: null, lamp_left: null, lamp_right: null, desk_strip: null, pc: null, tv: null };
+const OWEN_OBJS = [
+  { k: 'fan', n: 'Ceiling Fan', i: 'fan', cfg: ['fan', 'fan_light'] },
+  { k: 'cans', n: 'Can Lights', i: 'downlight', cfg: ['cans'] },
+  { k: 'hex', n: 'Hex Panels', i: 'hex', cfg: ['hex'] },
+  { k: 'bed', n: 'Bed Glow', i: 'bed', cfg: ['bed_strip'] },
+  { k: 'lampL', n: 'Left Lamp', i: 'lamp', cfg: ['lamp_left'] },
+  { k: 'lampR', n: 'Right Lamp', i: 'lamp', cfg: ['lamp_right'] },
+  { k: 'desk', n: 'Desk Light', i: 'desk', cfg: ['desk_strip'] },
+  { k: 'pc', n: 'PC', i: 'pc', cfg: ['pc'] },
+  { k: 'tv', n: 'TV', i: 'tv', cfg: ['tv'], tv: true },
+];
+const OWEN_BY = Object.fromEntries(OWEN_OBJS.map((o) => [o.k, o]));
+const OWEN_COLORS = [[255, 59, 48], [255, 149, 0], [255, 214, 10], [48, 209, 88], [100, 210, 255], [10, 132, 255], [94, 92, 230], [191, 90, 242], [255, 95, 162], [255, 255, 255]];
+const OWEN_LINKS_KEY = 'lux-owen-links';
+const mediaOn = (st) => avail(st) && !['off', 'standby', 'unknown'].includes(st.state);
+const entText = (hs, e) => `${e.replace(/[._]/g, ' ')} ${(hs.states[e] && hs.states[e].attributes.friendly_name) || ''}`.toLowerCase();
+const rawRGB = (st) => { const c = st && st.attributes.rgb_color; return c && c.length === 3 ? c : null; };
+const colorable = (st) => !!st && (st.attributes.supported_color_modes || []).some((m) => ['hs', 'rgb', 'rgbw', 'rgbww', 'xy'].includes(m));
+const entIcon = (e, def = 'bulb') => (e.startsWith('fan.') ? 'fan' : e.startsWith('switch.') ? 'power' : e.startsWith('media_player.') ? 'tv' : def);
+
+Object.assign(LuxHomeCard.prototype, {
+  /* which HA entities each object in the room controls */
+  _owenLinks() {
+    if (!this._oLinks) { try { this._oLinks = JSON.parse(localStorage.getItem(OWEN_LINKS_KEY) || '{}') || {}; } catch (e) { this._oLinks = {}; } }
+    return this._oLinks;
+  },
+  _owenSetLink(k, ids) {
+    const l = { ...this._owenLinks() }; if (ids == null) delete l[k]; else l[k] = ids;
+    this._oLinks = l; this._oAuto = null;
+    try { localStorage.setItem(OWEN_LINKS_KEY, JSON.stringify(l)); } catch (e) { /* storage blocked: keep it for this session */ }
+    this._update(true);
+  },
+  _owenPool() {
+    const hs = this._hass; const O = this._c.owen; const H = this._c.house || {};
+    const ents = hs.entities || {}, devs = hs.devices || {}, areas = hs.areas || {};
+    const out = new Set();
+    for (const [e, r] of Object.entries(H.lights || {})) if (r === O.room && hs.states[e]) out.add(e);
+    for (const e in hs.states) {
+      if (!['light', 'switch', 'fan', 'media_player'].includes(e.split('.')[0])) continue;
+      const x = ents[e]; if (x && (x.hidden || x.entity_category)) continue;
+      const area = x && (x.area_id || (x.device_id && devs[x.device_id] && devs[x.device_id].area_id));
+      const an = area ? `${area} ${(areas[area] && areas[area].name) || ''}`.toLowerCase() : '';
+      if (/\bowen/.test(entText(hs, e)) || /\bowen/.test(an)) out.add(e);
+    }
+    return [...out];
+  },
+  _owenAuto() {
+    const now = Date.now(); if (this._oAuto && now - this._oAuto.t < 15000) return this._oAuto.map;
+    const hs = this._hass; const O = this._c.owen; const pool = this._owenPool(); const map = {}; const used = new Set();
+    // devices already chosen in the config or on this device are never auto-assigned to another object
+    OWEN_OBJS.forEach((o) => o.cfg.forEach((c) => [].concat(O[c] || []).forEach((e) => used.add(e))));
+    Object.values(this._owenLinks()).forEach((ids) => (ids || []).forEach((e) => used.add(e)));
+    const T = (e) => entText(hs, e); const dom = (e) => e.split('.')[0]; const L = (e) => ['light', 'switch'].includes(dom(e));
+    const take = (list, test, multi) => { const hit = list.filter((e) => !used.has(e) && test(e)); const res = multi ? hit : hit.slice(0, 1); res.forEach((e) => used.add(e)); return res; };
+    map.fan = take(pool, (e) => dom(e) === 'fan' || (dom(e) === 'switch' && /\bfan\b/.test(T(e))))
+      .concat(take(pool, (e) => dom(e) === 'light' && /\bfan\b/.test(T(e))));
+    map.pc = take(pool, (e) => L(e) && /b650|g502|gaming x|\bpc\b|computer|desktop|tower|openrgb/.test(T(e)), true);
+    // the gaming PC's RGB (B650 board, G502 mouse, Gaming X GPU) is kept off the other tabs; it is the PC in this room
+    if (!map.pc.length) map.pc = take(Object.keys(hs.states), (e) => dom(e) === 'light' && /b650|g502|gaming_x/.test(e), true);
+    map.tv = take(pool, (e) => dom(e) === 'media_player' && !/sonos|speaker|echo|homepod|nest|alexa/.test(T(e)));
+    map.hex = take(pool, (e) => dom(e) === 'light' && /nanoleaf|\bhex|shapes|panels?\b|canvas|elements/.test(T(e)));
+    map.desk = take(pool, (e) => L(e) && /desk|monitor|light ?bar|screen ?bar|backlight/.test(T(e)));
+    const lamps = take(pool, (e) => L(e) && /lamp|night ?stand|bedside/.test(T(e)), true);
+    const lf = lamps.find((e) => /\bleft\b/.test(T(e))), rt = lamps.find((e) => /\bright\b/.test(T(e)));
+    const l1 = lf || lamps.find((e) => e !== rt); const r1 = rt || lamps.find((e) => e !== l1) || l1;
+    map.lampL = l1 ? [l1] : []; map.lampR = r1 ? [r1] : [];
+    map.bed = take(pool, (e) => L(e) && /\bbed\b|headboard|under ?glow|strip|\bled\b/.test(T(e)));
+    map.cans = take(pool, (e) => dom(e) === 'light' && /\bcans?\b|recessed|downlight|ceiling|overhead|\bhall/.test(T(e)), true);
+    map.rest = pool.filter((e) => !used.has(e) && dom(e) !== 'media_player');
+    this._oAuto = { t: now, map }; return map;
+  },
+  _owenEnts(k) {
+    const o = OWEN_BY[k]; const O = this._c.owen; const hs = this._hass; const ok = (e) => !!hs.states[e];
+    const cfg = o.cfg.map((c) => O[c]);
+    if (cfg.some((v) => v != null)) return { src: 'config', ids: cfg.flatMap((v) => (v ? [].concat(v) : [])).filter(ok) };
+    const l = this._owenLinks()[k];
+    if (Array.isArray(l)) return { src: 'link', ids: l.filter(ok) };
+    return { src: 'auto', ids: (this._owenAuto()[k] || []).filter(ok) };
+  },
+  _owenState() {
+    const hs = this._hass; const out = {}; const now = Date.now(); const pend = this._oPend || (this._oPend = {});
+    for (const o of OWEN_OBJS) {
+      const { ids, src } = this._owenEnts(o.k); const sts = ids.map((e) => hs.states[e]).filter(Boolean);
+      const r = { ids, src, linked: sts.length > 0, avail: sts.some(avail) };
+      if (o.tv) {
+        const st = sts[0]; const a = (st && st.attributes) || {}; r.on = mediaOn(st);
+        r.pic = r.on && a.entity_picture ? a.entity_picture : null;
+        r.status = !st ? 'Not linked' : !avail(st) ? 'Unavailable' : r.on ? (a.media_title || a.app_name || a.source || 'On') : 'Off';
+      } else {
+        const fans = sts.filter((s) => s.entity_id.startsWith('fan.')), lights = sts.filter((s) => !s.entity_id.startsWith('fan.'));
+        const onL = lights.filter(isOn);
+        r.fan = fans.some(isOn); r.light = onL.length > 0; r.on = r.fan || r.light;
+        const br = onL.map((s) => num(s.attributes.brightness)).filter((v) => v != null);
+        r.pct = br.length ? Math.max(1, Math.round(br.reduce((a, b) => a + b, 0) / br.length / 2.55)) : null;
+        r.level = r.pct != null ? r.pct / 100 : 1;
+        const c = onL.find(rawRGB); r.rgb = c ? rawRGB(c) : null;
+        r.effect = onL.map((s) => s.attributes.effect).find((x) => x && !/^(none|solid|static|off)$/i.test(x)) || null;
+        const fp = fans.map((s) => num(s.attributes.percentage)).find((v) => v != null); r.speed = fp != null ? fp / 100 : 1;
+        const lp = r.light ? (r.pct != null ? `${r.pct}%` : 'on') : 'off';
+        r.status = !sts.length ? 'Not linked' : !r.avail ? 'Unavailable'
+          : fans.length ? [r.fan ? (fp != null ? `Fan ${Math.round(fp)}%` : 'Fan on') : 'Fan off', lights.length ? `Light ${lp}` : ''].filter(Boolean).join(' · ')
+          : r.light ? [r.pct != null ? `${r.pct}%` : 'On', r.effect, lights.length > 1 ? `${onL.length} of ${lights.length}` : ''].filter(Boolean).join(' · ') : 'Off';
+      }
+      // optimistic state right after a tap
+      const p = pend[o.k];
+      if (p && now < p.until) {
+        if (p.on === r.on) delete pend[o.k];
+        else { r.on = p.on; if (!o.tv) { r.light = p.on && p.light; r.fan = p.on && !p.light; } r.status = p.on ? 'Turning on…' : 'Turning off…'; }
+      }
+      const tint = r.light && r.rgb ? r.rgb.map((v, i) => Math.round(v * 0.85 + [255, 214, 150][i] * 0.15)) : [255, 196, 110];
+      r.css = tint.join(',');
+      out[o.k] = r;
+    }
+    return out;
+  },
+  _callEach(ids, service) {
+    const by = {};
+    ids.forEach((e) => { const d = e.split('.')[0]; (by[['light', 'switch', 'fan', 'media_player'].includes(d) ? d : 'homeassistant'] ||= []).push(e); });
+    Object.entries(by).forEach(([d, list]) => this._call(d, service, { entity_id: list }));
+  },
+  _owenToggle(k) {
+    const o = OWEN_BY[k]; const hs = this._hass; const ids = this._owenEnts(k).ids.filter((e) => avail(hs.states[e])); if (!ids.length) return;
+    const pend = this._oPend || (this._oPend = {});
+    if (o.tv) {
+      const on = mediaOn(hs.states[ids[0]]); pend[k] = { on: !on, until: Date.now() + 6000 };
+      this._call('media_player', on ? 'turn_off' : 'turn_on', { entity_id: ids[0] }); this._update(true); return;
+    }
+    const on = ids.some((e) => isOn(hs.states[e]));
+    // the fan row's power button switches the light kit on; blade speed lives in the fan's sheet
+    const lights = ids.filter((e) => !e.startsWith('fan.'));
+    pend[k] = { on: !on, light: lights.length > 0, until: Date.now() + 3000 };
+    this._callEach(on ? ids : (lights.length ? lights : ids), on ? 'turn_off' : 'turn_on');
+    this._update(true);
+  },
+
+  /* ── OWEN ── */
+  _build_owen(pg) {
+    const phone = this._isPhone(); const O = this._c.owen;
+    const wrap = h(`<div class="${phone ? 'stack' : 'house-grid'}">
+      <div class="card stage hstage"><div class="load">Loading 3D room…</div><div class="lbls"></div>
+        <div class="ttl3"><div class="a">${esc(O.name)}</div><div class="b"></div></div>
+        <div class="ov"><div class="seg rseg"><button class="on" data-v="room">${icon('cube')}Room</button><button data-v="bed">${icon('bed')}Bed</button><button data-v="desk">${icon('desk')}Desk</button><button data-v="top">${icon('top')}Top</button></div></div></div>
+      <div class="card hpanel"><div class="hd"><div class="tt">Devices<small></small></div><button class="pill press alloff">${icon('power')}All Off</button></div>
+        <div class="hlist"><div class="olist" style="display:flex;flex-direction:column;gap:6px"></div>
+          <div class="oext" style="display:none"><div class="sec-t" style="margin:14px 4px 8px">Also in this room</div><div class="lt-grid"></div></div></div>
+        <div class="hint">Tap anything in the room, or a row here, to control it</div></div></div>`);
+    pg.el.appendChild(wrap); if (phone) pg.el.classList.add('scroll');
+    const stage = wrap.querySelector('.hstage'), list = wrap.querySelector('.olist'), ext = wrap.querySelector('.oext'), btn = wrap.querySelector('.alloff');
+    pg.lt = {};
+    list.addEventListener('click', (e) => {
+      const t = e.target.closest('[data-t]'); if (t) { e.stopPropagation(); this._owenToggle(t.dataset.t); return; }
+      const r = e.target.closest('[data-o]'); if (r) this._openOwen(r.dataset.o);
+    });
+    wrap.querySelector('.rseg').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-v]'); if (!b) return;
+      wrap.querySelectorAll('.rseg button').forEach((x) => x.classList.toggle('on', x === b));
+      if (this._room3d) this._room3d.view(b.dataset.v);
+    });
+    const onIds = () => {
+      const hs = this._hass;
+      const ids = OWEN_OBJS.filter((o) => !o.tv).flatMap((o) => this._owenEnts(o.k).ids).concat(this._owenAuto().rest || []);
+      return ids.filter((e, i) => ids.indexOf(e) === i && isOn(hs.states[e]));
+    };
+    btn.addEventListener('click', () => {
+      const ids = onIds(); if (!ids.length) return;
+      if (!btn.classList.contains('confirm')) {
+        btn.classList.add('confirm'); btn.innerHTML = `${icon('power')}Turn off ${ids.length}?`;
+        clearTimeout(btn._t); btn._t = setTimeout(() => { btn.classList.remove('confirm'); btn.innerHTML = `${icon('power')}All Off`; }, 3200);
+        return;
+      }
+      clearTimeout(btn._t); btn.classList.remove('confirm'); btn.innerHTML = `${icon('power')}All Off`;
+      this._callEach(ids, 'turn_off');
+    });
+    this._room3d = new LuxRoom3D(stage, { threeUrl: this._c.three_url, dark: this.getAttribute('theme') === 'dark',
+      onReady: () => { stage.querySelector('.load').style.display = 'none'; pg.update(); },
+      onError: (m) => { stage.querySelector('.load').textContent = m; },
+      onPick: (k) => { if (k) this._openOwen(k); } });
+    this._room3d.setActive(true);
+    pg.update = () => {
+      const hs = this._hass; const S = this._owenState();
+      if (this._room3d) this._room3d.setState({ objs: S, night: hs.states['sun.sun'] ? hs.states['sun.sun'].state === 'below_horizon' : false });
+      const shown = OWEN_OBJS.filter((o) => !o.cfg.every((c) => O[c] === false));
+      const on = shown.filter((o) => S[o.k].on);
+      stage.querySelector('.ttl3 .b').textContent = !on.length ? 'Everything off' : on.length > 3 ? `${on.length} things on` : `${on.map((o) => o.n).join(' · ')} on`;
+      wrap.querySelector('.hpanel small').textContent = on.length ? `${on.length} on` : '';
+      const rows = shown.map((o) => {
+        const r = S[o.k];
+        return `<div class="hroom orow press ${r.on ? 'lit' : ''} ${this._owenSel === o.k ? 'sel' : ''} ${r.linked ? '' : 'na'}" data-o="${o.k}" style="--rgb:${r.css}">
+          <div class="ri">${icon(o.i)}</div><div class="tx"><div class="rn">${esc(o.n)}</div><div class="rs">${esc(r.linked ? r.status : 'Not linked · tap to choose')}</div></div>
+          ${r.linked ? `<button class="round sm press ${r.on ? 'on' : ''}" data-t="${o.k}" aria-label="Turn ${esc(o.n)} ${r.on ? 'off' : 'on'}">${icon('power')}</button>` : icon('chevron', 'chev')}</div>`;
+      }).join('');
+      if (list._h !== rows) { list._h = rows; list.innerHTML = rows; }
+      const rest = (this._owenAuto().rest || []).filter((e) => hs.states[e]);
+      ext.style.display = rest.length ? '' : 'none';
+      const grid = ext.querySelector('.lt-grid'); const key = rest.join('|');
+      if (grid._key !== key) {
+        grid._key = key; grid.innerHTML = '';
+        rest.forEach((e) => { const t = pg.lt[e] || (pg.lt[e] = new LuxLightTile(this, e, { name: this._entName(e), icon: entIcon(e) })); grid.appendChild(t.el); });
+      }
+      rest.forEach((e) => pg.lt[e].render());
+      btn.style.display = onIds().length ? '' : 'none';
+    };
+  },
+  _openOwen(k) {
+    const o = OWEN_BY[k]; if (!o) return;
+    this._owenSel = k; if (this._room3d) this._room3d.select(k);
+    const body = h('<div class="osheet"></div>');
+    let sig = null, parts = [], picking = false, query = '';
+    const build = () => {
+      const hs = this._hass; const r = this._owenEnts(k); const ids = r.ids;
+      body.innerHTML = ''; parts = [];
+      if (!ids.length) {
+        body.appendChild(h(`<div class="ohelp">${r.src === 'config' ? `The device set in the card config (owen.${o.cfg.join(' / owen.')}) wasn’t found in Home Assistant.`
+          : `Nothing is linked to the ${esc(o.n.toLowerCase())} yet. Pick the Home Assistant device that controls it below.`}</div>`));
+      } else if (o.tv) {
+        parts.push(this._owenTvBlock(ids[0], body));
+      } else {
+        const grid = h('<div class="lt-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr))"></div>'); body.appendChild(grid);
+        const tiles = ids.map((e) => new LuxLightTile(this, e, { name: this._entName(e), icon: entIcon(e, o.i) }));
+        tiles.forEach((t) => grid.appendChild(t.el)); parts.push(() => tiles.forEach((t) => t.render()));
+        ids.filter((e) => e.startsWith('fan.') && hs.states[e].attributes.percentage !== undefined).forEach((e) => parts.push(this._owenFanBlock(e, body, ids.length > 1)));
+        const col = ids.filter((e) => e.startsWith('light.') && colorable(hs.states[e]));
+        if (col.length) parts.push(this._owenColorBlock(col, body));
+        ids.filter((e) => e.startsWith('light.') && (hs.states[e].attributes.effect_list || []).length).forEach((e) => parts.push(this._owenFxBlock(e, body, ids.length > 1)));
+      }
+      // which device(s) this object controls, and a picker to change that
+      const srcTxt = r.src === 'config' ? (ids.length ? `Set in the card config (owen.${o.cfg.join(' / owen.')})` : '')
+        : r.src === 'link' ? 'Chosen on this device' : ids.length ? 'Found automatically' : '';
+      const foot = h(`<div class="olink"><div class="ohelp">${esc(srcTxt)}</div><div style="display:flex;gap:8px">${r.src === 'link' ? '<button class="pill press oreset">Reset</button>' : ''}${r.src !== 'config' ? `<button class="pill press ochg">${ids.length ? 'Change device' : 'Choose device'}</button>` : ''}</div></div>`);
+      body.appendChild(foot);
+      if (r.src === 'config') return;
+      const pk = h(`<div class="opicker" style="${picking || !ids.length ? '' : 'display:none'}"><input class="oq" type="search" placeholder="Search Home Assistant devices" autocomplete="off" spellcheck="false"><div class="opick"></div></div>`);
+      body.appendChild(pk);
+      const inp = pk.querySelector('.oq'), box = pk.querySelector('.opick'); inp.value = query;
+      const fill = () => {
+        const hs2 = this._hass; const q = inp.value.trim().toLowerCase(); query = inp.value;
+        const pool = new Set(this._owenPool()); const cur = new Set(this._owenEnts(k).ids);
+        const doms = o.tv ? ['media_player'] : k === 'fan' ? ['fan', 'light', 'switch'] : ['light', 'switch'];
+        const nm = (e) => hs2.states[e].attributes.friendly_name || e;
+        const rows = Object.keys(hs2.states).filter((e) => doms.includes(e.split('.')[0]) && (!q || entText(hs2, e).includes(q)))
+          .sort((a, b) => (cur.has(b) - cur.has(a)) || (pool.has(b) - pool.has(a)) || nm(a).localeCompare(nm(b))).slice(0, 40);
+        box.innerHTML = rows.map((e) => `<div class="spk ${cur.has(e) ? 'sel' : ''}" data-e="${esc(e)}"><div class="si">${icon(entIcon(e))}</div>
+          <div class="tx"><div class="sn">${esc(nm(e))}</div><div class="ss">${esc(e)}${pool.has(e) ? ' · In this room' : ''}</div></div>${cur.has(e) ? icon('check', 'ck') : ''}</div>`).join('')
+          || '<div class="ohelp" style="padding:10px 4px">No matching devices</div>';
+      };
+      inp.addEventListener('input', fill); fill();
+      box.addEventListener('click', (e) => {
+        const row = e.target.closest('[data-e]'); if (!row) return; const id = row.dataset.e;
+        const cur = this._owenEnts(k).ids; picking = true;
+        this._owenSetLink(k, o.tv ? (cur.includes(id) ? [] : [id]) : cur.includes(id) ? cur.filter((x) => x !== id) : cur.concat(id));
+      });
+      const chg = foot.querySelector('.ochg');
+      if (chg) chg.addEventListener('click', () => { picking = !picking; pk.style.display = picking ? '' : 'none'; if (picking) inp.focus(); });
+      const rs = foot.querySelector('.oreset');
+      if (rs) rs.addEventListener('click', () => { picking = false; this._owenSetLink(k, null); });
+    };
+    this._openSheet(o.n, body, () => {
+      const r = this._owenEnts(k); const s = `${r.src}|${r.ids.join('|')}`;
+      if (s !== sig) { sig = s; build(); }
+      parts.forEach((f) => f());
+    });
+    this._onSheetClose = () => { this._owenSel = null; if (this._room3d) this._room3d.select(null); this._update(true); };
+    this._update(true);
+  },
+  _owenFanBlock(id, body, label) {
+    const name = label ? `${this._hass.states[id].attributes.friendly_name || 'Fan'} · Speed` : 'Fan speed';
+    const g = h(`<div class="grp"><div class="sec-t">${esc(name)}</div><div class="oseg">${[['Off', 0], ['Low', 33], ['Medium', 67], ['High', 100]].map(([n, p]) => `<button class="pill press" data-p="${p}">${n}</button>`).join('')}</div></div>`);
+    body.appendChild(g);
+    g.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-p]'); if (!b || !avail(this._hass.states[id])) return; const p = +b.dataset.p;
+      if (p) this._call('fan', 'set_percentage', { entity_id: id, percentage: p }); else this._call('fan', 'turn_off', { entity_id: id });
+    });
+    return () => {
+      const st = this._hass.states[id]; const pc = st && num(st.attributes.percentage);
+      const cur = !isOn(st) ? 0 : pc == null ? 100 : pc <= 40 ? 33 : pc <= 75 ? 67 : 100;
+      g.querySelectorAll('[data-p]').forEach((b) => b.classList.toggle('on', +b.dataset.p === cur));
+    };
+  },
+  _owenColorBlock(ids, body) {
+    const g = h(`<div class="grp"><div class="sec-t">Color</div><div class="oswatch">${OWEN_COLORS.map((c, i) => `<button class="sw press" data-c="${i}" style="background:rgb(${c.join(',')})" aria-label="Color ${i + 1}"></button>`).join('')}</div></div>`);
+    body.appendChild(g);
+    g.addEventListener('click', (e) => { const b = e.target.closest('[data-c]'); if (b) this._call('light', 'turn_on', { entity_id: ids, rgb_color: OWEN_COLORS[+b.dataset.c] }); });
+    return () => {
+      const st = this._hass.states[ids[0]]; const c = isOn(st) && rawRGB(st);
+      g.querySelectorAll('[data-c]').forEach((b) => { const w = OWEN_COLORS[+b.dataset.c]; b.classList.toggle('on', !!c && w.every((v, i) => Math.abs(v - c[i]) < 14)); });
+    };
+  },
+  _owenFxBlock(id, body, label) {
+    const st = this._hass.states[id]; const fx = (st.attributes.effect_list || []).filter((x) => !/^(none|off)$/i.test(x)).slice(0, 18);
+    const g = h(`<div class="grp"><div class="sec-t">${label ? `${esc(st.attributes.friendly_name || id)} · ` : ''}Effects</div><div class="ofx">${fx.map((x) => `<button class="pill press" data-fx="${esc(x)}">${esc(x)}</button>`).join('')}</div></div>`);
+    body.appendChild(g);
+    g.addEventListener('click', (e) => { const b = e.target.closest('[data-fx]'); if (b) this._call('light', 'turn_on', { entity_id: id, effect: b.dataset.fx }); });
+    return () => { const s = this._hass.states[id]; const cur = isOn(s) && s.attributes.effect; g.querySelectorAll('[data-fx]').forEach((b) => b.classList.toggle('on', cur === b.dataset.fx)); };
+  },
+  _owenTvBlock(id, body) {
+    const g = h(`<div class="grp" style="margin-top:0"><div class="mm" style="padding:0"><div class="art"></div><div class="txt"><div class="ti"></div><div class="ar"></div></div><button class="round press tpow" aria-label="Power">${icon('power')}</button></div>
+      <div class="ctl" style="justify-content:center;margin-top:18px"><button class="round press pv" aria-label="Previous">${icon('prev')}</button><button class="round main press pp" aria-label="Play or pause">${icon('play')}</button><button class="round press nx" aria-label="Next">${icon('next')}</button></div>
+      <div class="vol">${icon('volume')}<div class="vs"></div></div><div class="srcs"></div></div>`);
+    body.appendChild(g);
+    const q = (s) => g.querySelector(s); const st = () => this._hass.states[id];
+    q('.tpow').addEventListener('click', () => {
+      const s = st(); if (!avail(s)) return; const on = mediaOn(s);
+      (this._oPend || (this._oPend = {})).tv = { on: !on, until: Date.now() + 6000 };
+      this._call('media_player', on ? 'turn_off' : 'turn_on', { entity_id: id });
+    });
+    q('.pv').addEventListener('click', () => this._call('media_player', 'media_previous_track', { entity_id: id }));
+    q('.pp').addEventListener('click', () => this._call('media_player', 'media_play_pause', { entity_id: id }));
+    q('.nx').addEventListener('click', () => this._call('media_player', 'media_next_track', { entity_id: id }));
+    const vs = makeSlider((v) => this._call('media_player', 'volume_set', { entity_id: id, volume_level: Math.round(v * 100) / 100 })); q('.vs').replaceWith(vs);
+    q('.srcs').addEventListener('click', (e) => { const b = e.target.closest('[data-s]'); if (b) this._call('media_player', 'select_source', { entity_id: id, source: b.dataset.s }); });
+    return () => {
+      const s = st(); if (!s) return; const a = s.attributes; const on = mediaOn(s);
+      const art = q('.art'); const pic = on && a.entity_picture; art.style.backgroundImage = pic ? `url("${pic}")` : ''; art.innerHTML = pic ? '' : icon('tv');
+      q('.ti').textContent = a.friendly_name || id;
+      q('.ar').textContent = !avail(s) ? 'Unavailable' : on ? ([a.media_title, a.app_name || a.source].filter(Boolean).join(' · ') || 'On') : 'Off';
+      q('.tpow').classList.toggle('on', on); q('.pp').innerHTML = icon(s.state === 'playing' ? 'pause' : 'play');
+      vs.set(num(a.volume_level) ?? 0);
+      const html = (a.source_list || []).slice(0, 12).map((x) => `<button class="pill press ${a.source === x ? 'solid' : ''}" data-s="${esc(x)}">${esc(x)}</button>`).join('');
+      if (q('.srcs')._h !== html) { q('.srcs')._h = html; q('.srcs').innerHTML = html; }
+    };
+  },
+});
+/* ───────────────────────── Live 3D room (Owen's bedroom) ─────────────────────────
+ * Room-local meters, centred on the floor: x across the room (−x hallway side, +x window dormer),
+ * z along it (−z bed wall, +z TV wall), y up. Shell surfaces are single-sided and face inward, so the
+ * walls and ceiling that face the camera from outside drop away (dollhouse cut-away), and whatever
+ * hangs on a dropped wall hides with it. Tapping an object only selects it; nothing here calls a service.
+ */
+const ROOM = {
+  W: 5.2, D: 6.0, knee: 1.5, ceil: 3.2, flat: 0.6,
+  dormer: { z0: -3.0, z1: -1.1, depth: 0.95, h: 2.45 },
+  hall: { x0: -1.95, x1: -1.05, len: 1.8, h: 2.0 },
+  win: { z0: -2.55, z1: -1.55, y0: 0.8, y1: 2.1 },
+  fan: [0, 0.1], cans: [[1.6, 1.0], [-1.6, 2.3]], lamps: [[-1.45, -2.74], [1.45, -2.74]],
+  desk: [0.25, 2.63], tvY: 1.9,
+};
+const ROOM_K = (ROOM.ceil - ROOM.knee) / (ROOM.W / 2 - ROOM.flat);
+const roomH = (x) => { const a = Math.abs(x); return a <= ROOM.flat ? ROOM.ceil : ROOM.ceil - (a - ROOM.flat) * ROOM_K; };
+const ROOM_VIEWS = {
+  room: { r: 12.5, pol: 0.92, az: -1.42, tx: 0.2, ty: 0.7, tz: 0 },
+  bed: { r: 7, pol: 1.1, az: -0.45, tx: 0, ty: 1.15, tz: -1.9 },       // like Owen's bed photo: window on the right, fan off to the side
+  desk: { r: 6.8, pol: 1.25, az: Math.PI - 0.16, tx: 0.2, ty: 1.1, tz: 2.1 },  // eye below the fan blades
+  top: { r: 12.5, pol: 0.03, az: 0, tx: 0.3, ty: 0, tz: 0.4 },
+};
+
+class LuxRoom3D {
+  constructor(host, opts) {
+    this.host = host; this.opts = opts; this.lbls = host.querySelector('.lbls');
+    this.active = false; this.ready = false; this.fps = opts.fps || 30; this.dark = !!opts.dark;
+    this.st = { objs: {}, night: false }; this.sel = null;
+    this.cam = { ...ROOM_VIEWS.room }; this.goal = { ...ROOM_VIEWS.room }; this.vel = { r: 0, pol: 0, az: 0, tx: 0, ty: 0, tz: 0 };
+    this.objs = {}; this.walls = []; this.ceilMats = []; this.pickables = []; this.F = {}; this.cols = {}; this.spin = 0; this.ceilA = -1;
+    this._init().catch((e) => { console.error('[lux-room3d]', e); opts.onError && opts.onError('3D view needs an internet connection to load'); });
+  }
+  async _init() {
+    const T = this.T = await import(this.opts.threeUrl);
+    const canvas = document.createElement('canvas'); this.host.prepend(canvas); this.canvas = canvas;
+    const R = this.renderer = new T.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'low-power' });
+    R.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+    R.outputColorSpace = T.SRGBColorSpace; R.toneMapping = T.ACESFilmicToneMapping;
+    this.scene = new T.Scene();
+    this.camera = new T.PerspectiveCamera(34, 1, 0.1, 120);
+    this._lights(); this._build(); this._input();
+    this.ro = new ResizeObserver(() => this.resize()); this.ro.observe(this.host);
+    this.io = new IntersectionObserver((e) => { this.visible = e[0].isIntersecting; this._loop(); }, { threshold: 0.01 }); this.io.observe(this.host);
+    this._vis = () => this._loop(); document.addEventListener('visibilitychange', this._vis);
+    this.resize(); this.ready = true;
+    this.opts.onReady && this.opts.onReady(); this._loop();
+  }
+  _lights() {
+    const T = this.T; const S = this.scene;
+    this.hemi = new T.HemisphereLight(0xf1f3f6, 0x9b9486, 1.4); S.add(this.hemi);
+    this.sun = new T.DirectionalLight(0xfff1dc, 1.3); this.sun.position.set(9, 6, -1.8); this.sun.target.position.set(0, 0, -1.8); S.add(this.sun, this.sun.target);
+    const P = (c, d, dec) => { const l = new T.PointLight(c, 0, d, dec); S.add(l); return l; };
+    const hd = ROOM.D / 2; const [dx, dz] = ROOM.desk;
+    this.L = {
+      fan: P(0xfff2e0, 9, 1.6), hex: P(0xffffff, 4.5, 1.8), bed: P(0xffffff, 3.2, 2), desk: P(0xffffff, 3, 2), tv: P(0x86a8ff, 4, 1.8), pc: P(0xffffff, 2.4, 2),
+      lamps: ROOM.lamps.map(() => P(0xffd29a, 4.5, 1.8)), cans: ROOM.cans.map(() => P(0xffe6c4, 5.5, 1.8)),
+    };
+    this.L.fan.position.set(ROOM.fan[0], ROOM.ceil - 0.8, ROOM.fan[1]); this.L.hex.position.set(0, 1.6, -hd + 0.45); this.L.bed.position.set(0, 0.3, -1.9);
+    this.L.desk.position.set(dx, 1.0, hd - 0.3); this.L.tv.position.set(dx, 1.8, hd - 0.7); this.L.pc.position.set(-0.3, 0.35, dz - 0.6);
+    ROOM.lamps.forEach(([x, z], i) => this.L.lamps[i].position.set(x, 1.05, z + 0.15));
+    ROOM.cans.forEach(([x, z], i) => this.L.cans[i].position.set(x * 0.8, roomH(x) - 0.35, z));
+  }
+  _build() {
+    const T = this.T, S = this.scene;
+    const { W, D, knee: kh, ceil: ch, flat: fw, dormer: Dm, hall: Hl, win } = ROOM;
+    const hw = W / 2, hd = D / 2, dx = hw + Dm.depth, xd = fw + (ch - Dm.h) / ROOM_K;
+    const M = (c, o = {}) => new T.MeshStandardMaterial({ color: c, roughness: o.r ?? 0.85, metalness: o.m ?? 0, ...(o.x || {}) });
+    const glowM = (c = 0xffffff, base = 0x202124) => M(base, { r: 0.4, x: { emissive: new T.Color(c), emissiveIntensity: 0 } });
+    // carpet: a little noise so the floor reads as pile, not plastic
+    const cv = document.createElement('canvas'); cv.width = cv.height = 128; const cx = cv.getContext('2d'); const img = cx.createImageData(128, 128);
+    for (let i = 0; i < img.data.length; i += 4) { const v = 226 + (Math.random() - 0.5) * 26; img.data[i] = v; img.data[i + 1] = v - 4; img.data[i + 2] = v - 11; img.data[i + 3] = 255; }
+    cx.putImageData(img, 0, 0);
+    const tex = this.carpetTex = new T.CanvasTexture(cv); tex.wrapS = tex.wrapT = T.RepeatWrapping; tex.repeat.set(3, 3); tex.colorSpace = T.SRGBColorSpace;
+    const carpet = M(0xffffff, { r: 1, x: { map: tex } });
+    const wall = M(0xdad9d4, { r: 0.95 }), trim = M(0xf6f5f1, { r: 0.6 }), slabSide = M(0xb9b4aa, { r: 1 });
+    const ceil = M(0xe6e5e1, { r: 0.95, x: { transparent: true } }); this.ceilMats.push(ceil);
+    const wood = M(0x5a3b2a, { r: 0.7 }), woodD = M(0x3d291f, { r: 0.75 }), black = M(0x18191b, { r: 0.5 }), leather = M(0x1c1c1f, { r: 0.38 });
+    const linen = M(0xeeede9, { r: 1 }), duvet = M(0xd4d5d7, { r: 1 }), sheets = M(0x2b2d33, { r: 1 }), metal = M(0x2a2b2e, { r: 0.35, m: 0.6 }), white = M(0xf3f2ee, { r: 0.8 });
+    this.gm = {
+      fanLight: glowM(0xfff4e2, 0xe8e6e1), can: glowM(0xffefd6, 0xecebe7), strip: glowM(), desk: glowM(), pc: glowM(0xffffff, 0x14161a), screens: glowM(0x4a7fd0, 0x0c0d10),
+      window: M(0x9fb8cc, { r: 0.1, m: 0.2, x: { emissive: new T.Color(0xd8ecff), emissiveIntensity: 0.9 } }),
+      lamps: ROOM.lamps.map(() => M(0xf4f1ea, { r: 0.9, x: { emissive: new T.Color(0xffd6a0), emissiveIntensity: 0 } })),
+    };
+    this.hitM = new T.MeshBasicMaterial({ visible: false, side: T.DoubleSide });
+
+    const add = (g, m, parent = S) => { const o = new T.Mesh(g, m); parent.add(o); return o; };
+    const box = (parent, m, w, hh, d, x, y, z, ry = 0, rx = 0, rz = 0) => { const o = add(new T.BoxGeometry(w, hh, d), m, parent); o.position.set(x, y + hh / 2, z); o.rotation.set(rx, ry, rz); return o; };
+    const shape = (pts, holes = []) => { const s = new T.Shape(pts.map(([a, b]) => new T.Vector2(a, b))); holes.forEach((hp) => s.holes.push(new T.Path(hp.map(([a, b]) => new T.Vector2(a, b))))); return s; };
+    // turn a planar geometry so its front faces point along n (into the room)
+    const face = (g, n) => {
+      g.computeVertexNormals(); const a = g.attributes.normal;
+      if (a.getX(0) * n[0] + a.getY(0) * n[1] + a.getZ(0) * n[2] < 0) { const ix = g.index; for (let i = 0; i < ix.count; i += 3) { const t = ix.getX(i); ix.setX(i, ix.getX(i + 2)); ix.setX(i + 2, t); } g.computeVertexNormals(); }
+      return g;
+    };
+    const wallZ = (pts, z, nz, m, holes) => { const g = new T.ShapeGeometry(shape(pts, holes)); g.translate(0, 0, z); return add(face(g, [0, 0, nz]), m); };        // pts [x, y]
+    const wallX = (pts, x, nx, m, holes) => { const g = new T.ShapeGeometry(shape(pts, holes)); g.rotateY(-Math.PI / 2); g.translate(x, 0, 0); return add(face(g, [nx, 0, 0]), m); }; // pts [z, y]
+    const plan = (pts, yf, n, m) => { const g = new T.ShapeGeometry(shape(pts)); const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const x = p.getX(i), z = p.getY(i); p.setXYZ(i, x, yf(x), z); } return add(face(g, n), m); }; // pts [x, z]
+    const flat = (y) => () => y;
+    const wallRec = (n, p) => { const w = { n: new T.Vector3(...n), p: new T.Vector3(...p), items: [], vis: true }; this.walls.push(w); return w; };
+    const on = (w, o) => { w.items.push(o); return o; };
+    const spot = (col, w, d, x, y, z, ry = null) => {
+      const m = new T.ShaderMaterial({ uniforms: { uOn: { value: 0 }, uCol: { value: new T.Color(col) } }, vertexShader: SHEET_VS, fragmentShader: POOLSPOT_FS, transparent: true, depthWrite: false, blending: T.AdditiveBlending });
+      const o = add(new T.PlaneGeometry(w, d), m); if (ry === null) o.rotation.x = -Math.PI / 2; else o.rotation.y = ry; o.position.set(x, y, z); o.renderOrder = 3; return o;
+    };
+    const reg = (k, g, w = null, parts = null) => { g.traverse((o) => { if (o.isMesh) { o.userData.obj = k; this.pickables.push(o); } }); this.objs[k] = { g, w, pg: parts || [g] }; };
+
+    // ── floor slab (room + window dormer + hallway)
+    const fl = [[-hw, -hd], [dx, -hd], [dx, Dm.z1], [hw, Dm.z1], [hw, hd], [Hl.x1, hd], [Hl.x1, hd + Hl.len], [Hl.x0, hd + Hl.len], [Hl.x0, hd], [-hw, hd]];
+    const fg = new T.ExtrudeGeometry(new T.Shape(fl.map(([x, z]) => new T.Vector2(x, -z))), { depth: 0.16, bevelEnabled: false }); fg.rotateX(-Math.PI / 2); fg.translate(0, -0.16, 0);
+    add(fg, [carpet, slabSide]);
+
+    // ── shell: gable end walls, knee walls, sloped ceilings, window dormer, hallway
+    const bedW = wallRec([0, 0, 1], [0, 1, -hd]), tvW = wallRec([0, 0, -1], [0, 1, hd]);
+    const kneeN = wallRec([1, 0, 0], [-hw, 0.7, 0]), kneeP = wallRec([-1, 0, 0], [hw, 0.7, 0]), winW = wallRec([-1, 0, 0], [dx, 1, -2]);
+    const hallL = wallRec([1, 0, 0], [Hl.x0, 1, hd + 1]), hallE = wallRec([0, 0, -1], [0, 1, hd + Hl.len]);
+    wallZ([[-hw, 0], [dx, 0], [dx, Dm.h], [xd, Dm.h], [fw, ch], [-fw, ch], [-hw, kh]], -hd, 1, wall);
+    wallZ([[-hw, 0], [Hl.x0, 0], [Hl.x0, Hl.h], [Hl.x1, Hl.h], [Hl.x1, 0], [hw, 0], [hw, kh], [fw, ch], [-fw, ch], [-hw, kh]], hd, -1, wall);
+    wallX([[-hd, 0], [hd, 0], [hd, kh], [-hd, kh]], -hw, 1, wall);
+    wallX([[Dm.z1, 0], [hd, 0], [hd, kh], [Dm.z1, kh]], hw, -1, wall);
+    wallX([[Dm.z0, 0], [Dm.z1, 0], [Dm.z1, Dm.h], [Dm.z0, Dm.h]], dx, -1, wall, [[[win.z0, win.y0], [win.z1, win.y0], [win.z1, win.y1], [win.z0, win.y1]]]);
+    wallZ([[xd, Dm.h], [dx, Dm.h], [dx, 0], [hw, 0], [hw, kh]], Dm.z1, -1, wall);
+    wallX([[hd, 0], [hd + Hl.len, 0], [hd + Hl.len, Hl.h], [hd, Hl.h]], Hl.x0, 1, wall);
+    wallX([[hd, 0], [hd + Hl.len, 0], [hd + Hl.len, Hl.h], [hd, Hl.h]], Hl.x1, -1, wall);
+    wallZ([[Hl.x0, 0], [Hl.x1, 0], [Hl.x1, Hl.h], [Hl.x0, Hl.h]], hd + Hl.len, -1, wall);
+    plan([[-fw, -hd], [fw, -hd], [fw, hd], [-fw, hd]], flat(ch), [0, -1, 0], ceil);
+    plan([[-hw, -hd], [-fw, -hd], [-fw, hd], [-hw, hd]], roomH, [1, -1, 0], ceil);
+    plan([[fw, -hd], [xd, -hd], [xd, Dm.z1], [hw, Dm.z1], [hw, hd], [fw, hd]], roomH, [-1, -1, 0], ceil);
+    plan([[xd, Dm.z0], [dx, Dm.z0], [dx, Dm.z1], [xd, Dm.z1]], flat(Dm.h), [0, -1, 0], ceil);
+    plan([[Hl.x0, hd], [Hl.x1, hd], [Hl.x1, hd + Hl.len], [Hl.x0, hd + Hl.len]], flat(Hl.h), [0, -1, 0], ceil);
+    // baseboards
+    const bb = (w, len, x, z, ry) => on(w, box(S, trim, len, 0.1, 0.018, x, 0, z, ry));
+    bb(bedW, dx + hw, (dx - hw) / 2, -hd + 0.01, 0);
+    bb(tvW, Hl.x0 + hw, (Hl.x0 - hw) / 2, hd - 0.01, 0); bb(tvW, hw - Hl.x1, (Hl.x1 + hw) / 2, hd - 0.01, 0);
+    bb(kneeN, D, -hw + 0.01, 0, Math.PI / 2); bb(kneeP, hd - Dm.z1, hw - 0.01, (Dm.z1 + hd) / 2, Math.PI / 2);
+    bb(winW, Dm.z1 - Dm.z0, dx - 0.01, (Dm.z0 + Dm.z1) / 2, Math.PI / 2);
+    // window: glass, casing, mullions; daylight patch on the carpet
+    const wz = (win.z0 + win.z1) / 2, ww = win.z1 - win.z0, wh = win.y1 - win.y0;
+    const wg = new T.PlaneGeometry(ww, wh); wg.rotateY(-Math.PI / 2); on(winW, add(wg, this.gm.window)).position.set(dx - 0.004, (win.y0 + win.y1) / 2, wz);
+    on(winW, box(S, trim, 0.05, 0.07, ww + 0.14, dx - 0.025, win.y1, wz)); on(winW, box(S, trim, 0.1, 0.05, ww + 0.14, dx - 0.05, win.y0 - 0.05, wz));
+    on(winW, box(S, trim, 0.05, wh, 0.07, dx - 0.025, win.y0, win.z0 - 0.035)); on(winW, box(S, trim, 0.05, wh, 0.07, dx - 0.025, win.y0, win.z1 + 0.035));
+    on(winW, box(S, trim, 0.03, wh, 0.03, dx - 0.02, win.y0, wz)); on(winW, box(S, trim, 0.03, 0.03, ww, dx - 0.02, win.y0 + wh * 0.5, wz));
+    this.sunPatch = spot(0xfff0d6, 2.2, 1.4, 1.75, 0.012, wz);
+    // doors: hallway closet (Owen's first photo) and the hall's end
+    on(hallL, box(S, white, 0.03, 1.95, 0.72, Hl.x0 + 0.02, 0, hd + 0.9));
+    on(hallE, box(S, white, 0.72, 1.95, 0.03, (Hl.x0 + Hl.x1) / 2, 0, hd + Hl.len - 0.02));
+
+    // ── bed (tap = Bed Glow): dark wood frame + plank headboard, grey duvet, white pillows, LED strip along the frame
+    const bedG = new T.Group(); S.add(bedG); const bz = -hd + 0.06 + 1.06;
+    box(bedG, wood, 2.0, 0.24, 2.12, 0, 0.12, bz);
+    [[-0.94, -hd + 0.12], [0.94, -hd + 0.12], [-0.94, bz + 1.0], [0.94, bz + 1.0]].forEach(([x, z]) => box(bedG, woodD, 0.08, 0.12, 0.08, x, 0, z));
+    box(bedG, wood, 2.08, 1.2, 0.07, 0, 0, -hd + 0.04); box(bedG, woodD, 2.14, 0.07, 0.1, 0, 1.2, -hd + 0.045);
+    for (let i = -3; i <= 3; i++) box(bedG, woodD, 0.012, 0.86, 0.075, i * 0.29, 0.3, -hd + 0.04);
+    box(bedG, sheets, 1.93, 0.26, 2.0, 0, 0.36, bz + 0.02);
+    box(bedG, duvet, 1.99, 0.1, 1.4, 0, 0.58, bz + 0.33); box(bedG, duvet, 1.99, 0.06, 0.14, 0, 0.64, bz - 0.36, 0, 0.3);
+    const pillow = (x, y, z, ry, rx, s = 1) => { const o = add(new T.SphereGeometry(0.5, 20, 12), linen, bedG); o.scale.set(0.74 * s, 0.17 * s, 0.44 * s); o.position.set(x, y, z); o.rotation.set(rx, ry, 0); };
+    [[-0.46, 0.08], [0.46, -0.06]].forEach(([x, r]) => { pillow(x, 0.74, -hd + 0.33, r, -0.45); pillow(x, 0.7, -hd + 0.68, -r, -0.12, 0.96); });
+    box(bedG, this.gm.strip, 0.02, 0.02, 2.02, -1.005, 0.14, bz); box(bedG, this.gm.strip, 0.02, 0.02, 2.02, 1.005, 0.14, bz);
+    box(bedG, this.gm.strip, 2.0, 0.02, 0.02, 0, 0.14, bz + 1.065); box(bedG, this.gm.strip, 2.0, 0.02, 0.02, 0, 1.1, -hd + 0.004);
+    reg('bed', bedG);
+    this.bedHalo = on(bedW, spot(0xffffff, 3.4, 2.2, 0, 0.95, -hd + 0.006, 0)); this.bedFloor = spot(0xffffff, 3.6, 3.8, 0, 0.012, bz);
+
+    // ── nightstands + lamps (black frame, white rectangular shade)
+    ROOM.lamps.forEach(([x, z], i) => {
+      box(S, wood, 0.56, 0.58, 0.42, x, 0.04, z); box(S, woodD, 0.5, 0.012, 0.01, x, 0.42, z + 0.212); box(S, woodD, 0.5, 0.012, 0.01, x, 0.2, z + 0.212);
+      [[-0.24, -0.17], [0.24, -0.17], [-0.24, 0.17], [0.24, 0.17]].forEach(([a, b]) => box(S, woodD, 0.04, 0.04, 0.04, x + a, 0, z + b));
+      const g = new T.Group(); S.add(g);
+      box(g, metal, 0.14, 0.015, 0.1, x, 0.62, z); box(g, metal, 0.012, 0.42, 0.012, x - 0.05, 0.63, z); box(g, metal, 0.012, 0.42, 0.012, x + 0.05, 0.63, z); box(g, metal, 0.11, 0.012, 0.012, x, 1.05, z);
+      box(g, this.gm.lamps[i], 0.36, 0.26, 0.28, x, 0.93, z);
+      reg(i ? 'lampR' : 'lampL', g);
+    });
+
+    // ── hex panels above the headboard (two staggered rows, like the photo)
+    const hexG = new T.Group(); S.add(hexG); on(bedW, hexG); this.hexMats = [];
+    const hr = 0.118, hn = 13, hx0 = -((hn - 1) * 1.5 * hr) / 2;
+    for (let i = 0; i < hn; i++) {
+      const x = hx0 + i * 1.5 * hr, y = 1.56 + (i % 2 ? -1 : 1) * (Math.sqrt(3) / 4) * hr;
+      add(new T.CircleGeometry(hr, 6), white, hexG).position.set(x, y, -hd + 0.012);
+      const m = M(0xf4f4f2, { r: 0.6, x: { emissive: new T.Color(0xffffff), emissiveIntensity: 0 } }); this.hexMats.push(m);
+      add(new T.CircleGeometry(hr * 0.88, 6), m, hexG).position.set(x, y, -hd + 0.018);
+    }
+    add(new T.BoxGeometry(2.5, 0.5, 0.12), this.hitM, hexG).position.set(0, 1.56, -hd + 0.06);
+    reg('hex', hexG, bedW);
+    this.hexHalo = on(bedW, spot(0xffffff, 3.2, 1.3, 0, 1.56, -hd + 0.009, 0));
+
+    // ── black faux-leather futon at the foot of the bed, facing the TV
+    const sz = bz + 1.06 + 0.44;
+    box(S, leather, 1.82, 0.16, 0.8, 0, 0.26, sz); box(S, leather, 1.82, 0.44, 0.15, 0, 0.38, sz - 0.34, 0, -0.14);
+    box(S, leather, 0.34, 0.12, 0.42, 0, 0.42, sz - 0.08);
+    [[-0.84, -0.33], [0.84, -0.33], [-0.84, 0.33], [0.84, 0.33]].forEach(([a, b]) => box(S, black, 0.05, 0.26, 0.05, a, 0, sz + b));
+    box(S, linen, 0.46, 0.4, 0.13, -0.5, 0.42, sz - 0.2, 0.15, -0.3); box(S, linen, 0.44, 0.38, 0.13, 0.52, 0.42, sz - 0.2, -0.2, -0.3);
+
+    // ── ceiling fan with light kit
+    const fanG = new T.Group(); fanG.position.set(ROOM.fan[0], ch, ROOM.fan[1]); S.add(fanG);
+    const cyl = (m, r0, r1, hh, y, seg = 20) => { const o = add(new T.CylinderGeometry(r0, r1, hh, seg), m, fanG); o.position.y = y; return o; };
+    cyl(black, 0.07, 0.07, 0.05, -0.025); cyl(black, 0.016, 0.016, 0.34, -0.2); cyl(black, 0.12, 0.14, 0.13, -0.42); cyl(this.gm.fanLight, 0.1, 0.1, 0.04, -0.5, 28);
+    this.blades = new T.Group(); this.blades.position.y = -0.44; fanG.add(this.blades);
+    for (let k = 0; k < 5; k++) { const arm = new T.Group(); arm.rotation.y = (k / 5) * Math.PI * 2; const b = add(new T.BoxGeometry(0.68, 0.012, 0.13), black, arm); b.position.x = 0.5; b.rotation.x = 0.12; this.blades.add(arm); }
+    add(new T.CylinderGeometry(0.75, 0.75, 0.3, 16), this.hitM, fanG).position.y = -0.4;
+    reg('fan', fanG);
+
+    // ── can lights on the slopes
+    const canG = new T.Group(); S.add(canG); const canParts = [];
+    ROOM.cans.forEach(([x, z]) => {
+      const g = new T.Group(); g.position.set(x, roomH(x) - 0.006, z); g.rotation.z = x > 0 ? -Math.atan(ROOM_K) : Math.atan(ROOM_K); canG.add(g); canParts.push(g);
+      add(new T.CylinderGeometry(0.11, 0.11, 0.018, 24), trim, g); add(new T.CylinderGeometry(0.085, 0.085, 0.02, 24), this.gm.can, g).position.y = -0.004;
+      add(new T.SphereGeometry(0.3, 8, 6), this.hitM, g);
+    });
+    reg('cans', canG, null, canParts);
+    this.canPools = ROOM.cans.map(([x, z]) => spot(0xffe2b8, 2.4, 2.4, x * 0.8, 0.014, z));
+
+    // ── TV wall: TV, knot art either side, knee-wall door, three framed prints
+    const [tvx, dz] = ROOM.desk; const tvy = ROOM.tvY;
+    const tvG = new T.Group(); S.add(tvG); on(tvW, tvG);
+    box(tvG, black, 1.46, 0.84, 0.045, tvx, tvy - 0.42, hd - 0.03);
+    this.tvMat = new T.ShaderMaterial({ uniforms: { uOn: { value: 0 }, uTime: { value: 0 }, uTex: { value: 0 }, tMap: { value: null }, uCover: { value: new T.Vector2(1, 1) } }, vertexShader: SHEET_VS, fragmentShader: TV_FS });
+    const scr = add(new T.PlaneGeometry(1.42, 0.8), this.tvMat, tvG); scr.rotation.y = Math.PI; scr.position.set(tvx, tvy, hd - 0.054);
+    reg('tv', tvG, tvW);
+    [-1.0, 1.0].forEach((o) => { const k = on(tvW, add(new T.PlaneGeometry(0.14, 0.14), black)); k.rotation.y = Math.PI; k.position.set(tvx + o, tvy + 0.05, hd - 0.006); });
+    on(tvW, box(S, trim, 0.74, 1.53, 0.012, 1.55, 0, hd - 0.008)); on(tvW, box(S, white, 0.62, 1.45, 0.03, 1.55, 0.005, hd - 0.022));
+    on(tvW, add(new T.SphereGeometry(0.03, 12, 8), black)).position.set(1.31, 0.78, hd - 0.05);
+    [0.42, 0.8, 1.18].forEach((y, i) => {
+      on(tvW, box(S, black, 0.34, 0.27, 0.022, 2.25, y, hd - 0.013));
+      const mat = on(tvW, add(new T.PlaneGeometry(0.29, 0.22), white)); mat.rotation.y = Math.PI; mat.position.set(2.25, y + 0.135, hd - 0.025);
+      const pic = on(tvW, add(new T.PlaneGeometry(0.2, 0.13), M([0x3b4148, 0x30392f, 0x40362e][i], { r: 0.7 }))); pic.rotation.y = Math.PI; pic.position.set(2.25, y + 0.135, hd - 0.026);
+      const car = on(tvW, add(new T.PlaneGeometry(0.1, 0.022), M(0xff8000, { r: 0.6 }))); car.rotation.y = Math.PI; car.position.set(2.25 - 0.02 * (i - 1), y + 0.11, hd - 0.027);
+    });
+
+    // ── desk (tap = Desk Light): black desk, LED strip along the back edge, glow on the wall behind
+    const deskG = new T.Group(); S.add(deskG);
+    box(deskG, black, 1.4, 0.035, 0.68, tvx, 0.715, dz);
+    [-0.64, 0.64].forEach((o) => { box(deskG, black, 0.05, 0.715, 0.05, tvx + o, 0, dz - 0.28); box(deskG, black, 0.05, 0.715, 0.05, tvx + o, 0, dz + 0.28); box(deskG, black, 0.05, 0.04, 0.6, tvx + o, 0.02, dz); });
+    box(deskG, this.gm.desk, 1.32, 0.014, 0.014, tvx, 0.752, hd - 0.045);
+    box(deskG, metal, 0.44, 0.02, 0.14, tvx, 0.75, dz - 0.12); box(deskG, metal, 0.06, 0.02, 0.1, tvx + 0.34, 0.75, dz - 0.12);
+    reg('desk', deskG);
+    this.deskHalo = on(tvW, spot(0xffffff, 2.2, 1.2, tvx, 1.0, hd - 0.012, Math.PI));
+
+    // ── PC (tap = PC): two monitors + tower under the desk with an RGB side panel
+    const pcG = new T.Group(); S.add(pcG);
+    [-0.33, 0.33].forEach((o) => {
+      box(pcG, black, 0.64, 0.38, 0.03, tvx + o, 0.94, dz + 0.16);
+      const s = add(new T.PlaneGeometry(0.6, 0.34), this.gm.screens, pcG); s.rotation.y = Math.PI; s.position.set(tvx + o, 1.13, dz + 0.141);
+      box(pcG, black, 0.04, 0.2, 0.04, tvx + o, 0.75, dz + 0.19); box(pcG, black, 0.22, 0.012, 0.16, tvx + o, 0.75, dz + 0.19);
+    });
+    const px = -0.22, pz = dz - 0.02;
+    box(pcG, black, 0.22, 0.48, 0.46, px, 0, pz);
+    const pf = add(new T.PlaneGeometry(0.12, 0.4), this.gm.pc, pcG); pf.rotation.y = Math.PI; pf.position.set(px, 0.26, pz - 0.232);
+    const ps = add(new T.PlaneGeometry(0.4, 0.38), this.gm.pc, pcG); ps.rotation.y = -Math.PI / 2; ps.position.set(px - 0.112, 0.26, pz);
+    reg('pc', pcG);
+    this.pcPool = spot(0xffffff, 1.3, 1.3, px, 0.012, pz - 0.3);
+    this.tvPool = spot(0x6f9dff, 2.6, 2.2, tvx, 0.016, hd - 1.3);
+
+    // ── desk chair on a glass mat, VR/console shelf, standing desk + file cabinet in the dormer
+    const chx = 0.3, chz = dz - 0.65;
+    for (let k = 0; k < 5; k++) { const a = (k / 5) * Math.PI * 2; box(S, metal, 0.3, 0.03, 0.04, chx + Math.cos(a) * 0.15, 0.05, chz + Math.sin(a) * 0.15, -a); }
+    add(new T.CylinderGeometry(0.025, 0.025, 0.38, 10), metal).position.set(chx, 0.27, chz);
+    box(S, black, 0.52, 0.08, 0.5, chx, 0.44, chz); box(S, black, 0.5, 0.62, 0.05, chx, 0.55, chz - 0.27, 0, -0.1); box(S, black, 0.3, 0.12, 0.06, chx, 1.18, chz - 0.32, 0, -0.1);
+    box(S, black, 0.05, 0.03, 0.3, chx - 0.28, 0.66, chz); box(S, black, 0.05, 0.03, 0.3, chx + 0.28, 0.66, chz);
+    const matM = M(0xdfe8ee, { r: 0.1, x: { transparent: true, opacity: 0.3 } }); const cm = add(new T.PlaneGeometry(1.2, 1.0), matM); cm.rotation.x = -Math.PI / 2; cm.position.set(chx, 0.006, chz + 0.12);
+    const shx = -0.75, shz = hd - 0.19;
+    [[-0.24, -0.15], [0.24, -0.15], [-0.24, 0.15], [0.24, 0.15]].forEach(([a, b]) => box(S, black, 0.025, 0.9, 0.025, shx + a, 0, shz + b));
+    [0.12, 0.45, 0.88].forEach((y) => box(S, black, 0.52, 0.02, 0.33, shx, y, shz));
+    box(S, white, 0.36, 0.08, 0.24, shx, 0.47, shz); box(S, black, 0.3, 0.26, 0.26, shx, 0.14, shz);
+    const vr = add(new T.TorusGeometry(0.09, 0.025, 8, 20), white); vr.rotation.x = Math.PI / 2; vr.position.set(shx + 0.08, 0.96, shz);
+    const sdx = dx - 0.36, sdz = -1.7;
+    box(S, black, 0.62, 0.03, 1.1, sdx, 0.73, sdz);
+    [-0.48, 0.48].forEach((o) => { box(S, metal, 0.05, 0.73, 0.05, sdx, 0, sdz + o); box(S, metal, 0.56, 0.03, 0.06, sdx, 0, sdz + o); });
+    box(S, black, 0.44, 0.62, 0.5, dx - 0.3, 0, -2.62);
+
+    // ── selection rings (two, so both cans can show)
+    this.rings = [0, 1].map(() => { const r = add(new T.RingGeometry(0.93, 1, 64), new T.MeshBasicMaterial({ color: 0x4c9bff, transparent: true, opacity: 0, depthTest: false, depthWrite: false, side: T.DoubleSide })); r.renderOrder = 30; r.visible = false; return r; });
+
+    S.updateMatrixWorld(true);
+    for (const o of Object.values(this.objs)) {
+      o.parts = o.pg.map((g) => { const b = new T.Box3().setFromObject(g); return { c: b.getCenter(new T.Vector3()), rad: clamp(b.getSize(new T.Vector3()).length() / 2, 0.24, 1.5), top: b.max.y }; });
+    }
+  }
+  _input() {
+    const c = this.canvas; const ptrs = new Map(); let last = null, hist = [], down = null;
+    const now = () => performance.now();
+    c.addEventListener('pointerdown', (e) => { c.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); last = null; hist = []; this.dragging = true; down = { x: e.clientX, y: e.clientY, t: now() }; Object.assign(this.goal, this.cam); for (const k in this.vel) this.vel[k] = 0; this._kick(); });
+    c.addEventListener('pointermove', (e) => {
+      if (!ptrs.has(e.pointerId)) return; const prev = ptrs.get(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (ptrs.size === 1) {
+        const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+        this.cam.az -= dx * 0.0065; this.cam.pol = clamp(this.cam.pol - dy * 0.005, 0.03, 1.5);
+        hist.push({ t: now(), az: this.cam.az, pol: this.cam.pol }); if (hist.length > 6) hist.shift();
+      } else if (ptrs.size === 2) {
+        const [a, b] = [...ptrs.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (last) this.cam.r = clamp(this.cam.r * (last / d), 4.5, 24); last = d; down = null;
+      }
+      Object.assign(this.goal, this.cam); this._kick();
+    });
+    const up = (e) => {
+      ptrs.delete(e.pointerId); if (ptrs.size) return; this.dragging = false; last = null;
+      if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 7 && now() - down.t < 450) this._pick(e);
+      else if (hist.length > 1) {
+        const a = hist[0], b = hist[hist.length - 1]; const dt = Math.max(16, b.t - a.t) / 1000;
+        if (now() - b.t < 80) { const vaz = (b.az - a.az) / dt, vpol = (b.pol - a.pol) / dt; this.vel.az = vaz; this.vel.pol = vpol; this.goal.az = this.cam.az + vaz * 0.3; this.goal.pol = clamp(this.cam.pol + vpol * 0.25, 0.03, 1.5); }
+      }
+      down = null; this._kick();
+    };
+    c.addEventListener('pointerup', up); c.addEventListener('pointercancel', () => { ptrs.clear(); this.dragging = false; down = null; this._kick(); });
+    c.addEventListener('wheel', (e) => { e.preventDefault(); this.goal.r = clamp(this.goal.r * (1 + e.deltaY * 0.0012), 4.5, 24); this._kick(); }, { passive: false });
+    c.addEventListener('dblclick', () => this.view('room'));
+  }
+  _pick(e) {
+    const T = this.T; const r = this.canvas.getBoundingClientRect();
+    const v = new T.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    const ray = new T.Raycaster(); ray.setFromCamera(v, this.camera);
+    const hit = ray.intersectObjects(this.pickables.filter((m) => !this.objs[m.userData.obj].hidden), false);
+    const id = hit.length ? hit[0].object.userData.obj : null;
+    this.select(id); this.opts.onPick && this.opts.onPick(id);
+  }
+  select(id) { this.sel = id || null; this._kick(); }
+  view(name) {
+    const v = ROOM_VIEWS[name] || ROOM_VIEWS.room;
+    let az = v.az; while (az - this.cam.az > Math.PI) az -= Math.PI * 2; while (az - this.cam.az < -Math.PI) az += Math.PI * 2;
+    Object.assign(this.goal, v, { az }); this._kick();
+  }
+  setTheme(dark) { this.dark = dark; this._kick(); }
+  setState(s) { this.st = s || { objs: {} }; this._kick(); }
+  resize() {
+    if (!this.renderer) return; const r = this.host.getBoundingClientRect(); if (!r.width || !r.height) return;
+    this.renderer.setSize(r.width, r.height, false); this.camera.aspect = r.width / r.height; this.camera.updateProjectionMatrix(); this._kick();
+  }
+  setActive(on) { this.active = on; this._loop(); }
+  _kick() { this._loop(); }
+  _loop() {
+    const run = this.ready && this.active && this.visible !== false && !document.hidden;
+    if (!run) { cancelAnimationFrame(this._raf); this._raf = null; this._last = null; return; }
+    if (this._raf) return;
+    const step = (now) => {
+      this._raf = null;
+      if (!(this.ready && this.active && this.visible !== false && !document.hidden)) return;
+      if (this._idle && !this.dragging) { this._last = null; return; }   // nothing moving: stop drawing until the next kick
+      this._raf = requestAnimationFrame(step);
+      if (this._last && now - this._last < 1000 / this.fps - 2) return;
+      const dt = Math.min(0.05, this._last ? (now - this._last) / 1000 : 0.016); this._last = now;
+      this._frame(dt, now / 1000);
+    };
+    this._idle = false; this._raf = requestAnimationFrame(step);
+  }
+  _col(k, rgb, def) { const c = this.cols[k] || (this.cols[k] = new this.T.Color()); const v = rgb || def; return c.setRGB(v[0] / 255, v[1] / 255, v[2] / 255, this.T.SRGBColorSpace); }
+  _mix(k, a, b, t) { const c = this.cols[k] || (this.cols[k] = new this.T.Color()); const d = this._tmpC || (this._tmpC = new this.T.Color()); return c.setHex(a).lerp(d.setHex(b), t); }
+  _frame(dt, t) {
+    let moving = false, anim = false;
+    // camera spring (critically damped, response ≈ .55 s)
+    const resp = 0.55, k = Math.pow((2 * Math.PI) / resp, 2), c = (4 * Math.PI) / resp;
+    for (const key of ['r', 'pol', 'az', 'tx', 'ty', 'tz']) {
+      if (this.dragging && (key === 'az' || key === 'pol' || key === 'r')) continue;
+      const x = this.cam[key] - this.goal[key]; const v = this.vel[key];
+      this.vel[key] = v + (-k * x - c * v) * dt; this.cam[key] += this.vel[key] * dt;
+      if (Math.abs(x) > 0.0005 || Math.abs(this.vel[key]) > 0.0005) moving = true;
+    }
+    const C = this.cam, cam = this.camera; const r = C.r * Math.max(1, 1.2 / Math.max(0.4, cam.aspect));
+    cam.position.set(C.tx + r * Math.sin(C.pol) * Math.sin(C.az), C.ty + r * Math.cos(C.pol), C.tz + r * Math.sin(C.pol) * Math.cos(C.az));
+    cam.lookAt(C.tx, C.ty, C.tz);
+    // walls facing away from the camera drop out, and so does whatever hangs on them
+    const v = this._v || (this._v = new this.T.Vector3());
+    for (const w of this.walls) { const vis = v.copy(cam.position).sub(w.p).dot(w.n) > 0; if (vis !== w.vis) { w.vis = vis; w.items.forEach((o) => { o.visible = vis; }); } }
+    for (const o of Object.values(this.objs)) o.hidden = !!(o.w && !o.w.vis);
+    // looking in from above, the far ceiling slopes are just a faint outline; from eye level they're solid
+    const ca = clamp(1 - (cam.position.y - ROOM.ceil) / 1.2, 0.16, 1);
+    if (Math.abs(ca - this.ceilA) > 0.004) { this.ceilA = ca; this.ceilMats.forEach((m) => { m.opacity = ca; m.depthWrite = ca > 0.6; }); }
+
+    const S = this.st.objs || {}; const night = !!this.st.night; const F = this.F;
+    const ease = (key, to, sp = 3) => { const f0 = F[key] ?? 0; let f = f0 + (to - f0) * Math.min(1, dt * sp); if (Math.abs(to - f) < 0.002) f = to; if (f !== f0) moving = true; F[key] = f; return f; };
+    const lvl = (s) => (s && s.light ? 0.3 + 0.7 * (s.level ?? 1) : 0);
+    const day = ease('day', night ? 0 : 1, 1.5); const nf = 1 - day;
+    // daylight through the dormer window, dark blue glass at night
+    this.hemi.intensity = 0.3 + 1.1 * day; this.hemi.color.copy(this._mix('hs', 0x27324a, 0xf1f3f6, day)); this.hemi.groundColor.copy(this._mix('hg', 0x0e0f12, 0x9b9486, day));
+    this.sun.intensity = 1.3 * day; this.gm.window.emissive.copy(this._mix('win', 0x1a2a44, 0xd8ecff, day)); this.gm.window.emissiveIntensity = 0.2 + 0.7 * day;
+    this.sunPatch.material.uniforms.uOn.value = 0.32 * day;
+    this.renderer.toneMappingExposure = this.dark ? 0.95 : 1.0;
+    // ceiling fan: light kit + blades that spin up and coast down
+    const fs = S.fan || {};
+    const fl = ease('fanL', lvl(fs)); this.gm.fanLight.emissiveIntensity = fl * 2.6; this.L.fan.intensity = fl * (4 + 6 * nf);
+    const spd = ease('fanS', fs.fan ? 0.35 + 0.65 * (fs.speed ?? 1) : 0, 0.8); this.spin += spd * 9 * dt; this.blades.rotation.y = this.spin; if (spd > 0) anim = true;
+    // cans
+    const cv = ease('cans', lvl(S.cans)); this.gm.can.emissiveIntensity = cv * 2.4;
+    this.L.cans.forEach((l) => { l.intensity = cv * (1.6 + 3.4 * nf); }); this.canPools.forEach((o) => { o.material.uniforms.uOn.value = cv * (0.1 + 0.4 * nf); });
+    // lamps
+    ['lampL', 'lampR'].forEach((key, i) => {
+      const s = S[key] || {}; const lv = ease(key, lvl(s)); const m = this.gm.lamps[i];
+      m.emissive.copy(this._col(key, s.rgb, [255, 214, 160])); m.emissiveIntensity = lv * 1.2;
+      this.L.lamps[i].color.copy(m.emissive); this.L.lamps[i].intensity = lv * (1 + 2.8 * nf);
+    });
+    // hex panels (effects ripple colour across the panels)
+    const hs = S.hex || {}; const hv = ease('hex', lvl(hs)); const hc = this._col('hex', hs.rgb, [255, 236, 214]);
+    const hsl = this._hsl || (this._hsl = {}); hc.getHSL(hsl); const fx = hs.light && hs.effect;
+    this.hexMats.forEach((m, i) => { if (fx) m.emissive.setHSL((hsl.h + i * 0.07 + t * 0.05) % 1, Math.max(0.65, hsl.s), 0.55); else m.emissive.copy(hc); m.emissiveIntensity = hv * 1.7; });
+    if (fx && hv > 0) anim = true;
+    this.L.hex.color.copy(hc); this.L.hex.intensity = hv * (0.8 + 2.4 * nf);
+    this.hexHalo.material.uniforms.uCol.value.copy(hc); this.hexHalo.material.uniforms.uOn.value = hv * (0.12 + 0.4 * nf);
+    // bed glow
+    const bs = S.bed || {}; const bv = ease('bed', lvl(bs)); const bc = this._col('bed', bs.rgb, [255, 196, 110]);
+    this.gm.strip.emissive.copy(bc); this.gm.strip.emissiveIntensity = bv * 3;
+    this.L.bed.color.copy(bc); this.L.bed.intensity = bv * (0.6 + 2.2 * nf);
+    this.bedHalo.material.uniforms.uCol.value.copy(bc); this.bedHalo.material.uniforms.uOn.value = bv * (0.16 + 0.45 * nf);
+    this.bedFloor.material.uniforms.uCol.value.copy(bc); this.bedFloor.material.uniforms.uOn.value = bv * (0.1 + 0.3 * nf);
+    // desk light
+    const ds = S.desk || {}; const dv = ease('desk', lvl(ds)); const dc = this._col('desk', ds.rgb, [255, 214, 170]);
+    this.gm.desk.emissive.copy(dc); this.gm.desk.emissiveIntensity = dv * 3; this.L.desk.color.copy(dc); this.L.desk.intensity = dv * (0.5 + 2 * nf);
+    this.deskHalo.material.uniforms.uCol.value.copy(dc); this.deskHalo.material.uniforms.uOn.value = dv * (0.15 + 0.45 * nf);
+    // PC: RGB side panel (cycles when an effect runs), monitors wake with it
+    const ps = S.pc || {}; const pv = ease('pc', lvl(ps)); const pc = this._col('pc', ps.rgb, [120, 160, 255]);
+    if (ps.light && ps.effect) { pc.getHSL(hsl); pc.setHSL((hsl.h + t * 0.08) % 1, Math.max(0.7, hsl.s), 0.55); if (pv > 0) anim = true; }
+    this.gm.pc.emissive.copy(pc); this.gm.pc.emissiveIntensity = pv * 2.4; this.gm.screens.emissiveIntensity = pv * 0.9;
+    this.L.pc.color.copy(pc); this.L.pc.intensity = pv * (0.4 + 1.6 * nf);
+    this.pcPool.material.uniforms.uCol.value.copy(pc); this.pcPool.material.uniforms.uOn.value = pv * (0.1 + 0.3 * nf);
+    // TV
+    const ts = S.tv || {}; const tv = ease('tv', ts.on ? 1 : 0, 3); const U = this.tvMat.uniforms;
+    U.uOn.value = tv; U.uTime.value = t; if (tv > 0) anim = true;
+    this.L.tv.intensity = tv * (0.4 + 2.2 * nf); this.tvPool.material.uniforms.uOn.value = tv * (0.05 + 0.25 * nf);
+    this._tvArt(ts.on ? ts.pic : null);
+    // selection rings
+    const so = this.sel && this.objs[this.sel]; const ra = ease('sel', so && !so.hidden ? 1 : 0, 8);
+    this.rings.forEach((rg, i) => {
+      const p = so && so.parts[i]; rg.visible = !!p && ra > 0.01;
+      if (rg.visible) { rg.position.copy(p.c); rg.scale.setScalar(p.rad); rg.quaternion.copy(cam.quaternion); rg.material.opacity = 0.9 * ra; }
+    });
+    this.renderer.render(this.scene, cam);
+    this._labels();
+    this._idle = !(moving || anim);
+  }
+  _tvArt(pic) {
+    if (pic === this._tvPic) return; this._tvPic = pic; const U = this.tvMat.uniforms;
+    if (!pic) { U.uTex.value = 0; return; }
+    new this.T.TextureLoader().load(pic, (tex) => {
+      if (this._tvPic !== pic) { tex.dispose(); return; }
+      tex.colorSpace = this.T.SRGBColorSpace; const ia = tex.image.width / tex.image.height, sa = 1.42 / 0.8;
+      U.uCover.value.set(ia > sa ? sa / ia : 1, ia > sa ? 1 : ia / sa);
+      if (U.tMap.value) U.tMap.value.dispose(); U.tMap.value = tex; U.uTex.value = 1; this._kick();
+    }, undefined, () => { U.uTex.value = 0; });
+  }
+  _labels() {
+    const k = this.sel; const o = k && this.objs[k];
+    if (!o || o.hidden) { if (this._tag) this._tag.style.opacity = '0'; return; }
+    if (!this._tag) { this._tag = document.createElement('div'); this._tag.className = 'tag cool'; this.lbls.appendChild(this._tag); }
+    const html = `${icon(OWEN_BY[k].i)}${esc(OWEN_BY[k].n)}`; if (this._tag._h !== html) { this._tag.innerHTML = html; this._tag._h = html; }
+    const p = o.parts[0]; const v = this._lv || (this._lv = new this.T.Vector3()); v.set(p.c.x, p.top + 0.15, p.c.z).project(this.camera);
+    const x = (v.x * 0.5 + 0.5) * this.host.clientWidth, y = (-v.y * 0.5 + 0.5) * this.host.clientHeight;
+    this._tag.style.opacity = v.z < 1 ? '1' : '0';
+    this._tag.style.transform = `translate(${x.toFixed(1)}px,${y.toFixed(1)}px) translate(-50%,-100%)`;
+  }
+  dispose() {
+    this.active = false; cancelAnimationFrame(this._raf);
+    this.ro && this.ro.disconnect(); this.io && this.io.disconnect(); document.removeEventListener('visibilitychange', this._vis);
+    if (this.renderer) {
+      this.scene.traverse((o) => { o.geometry && o.geometry.dispose(); });
+      if (this.carpetTex) this.carpetTex.dispose(); if (this.tvMat && this.tvMat.uniforms.tMap.value) this.tvMat.uniforms.tMap.value.dispose();
+      this.renderer.dispose(); this.renderer.forceContextLoss && this.renderer.forceContextLoss();
+    }
+    this.canvas && this.canvas.remove();
+  }
+}
 /* ───────────────────────── Register ───────────────────────── */
 if (!customElements.get('lux-home-card')) {
   customElements.define('lux-home-card', LuxHomeCard);
   window.customCards = window.customCards || [];
-  window.customCards.push({ type: 'lux-home-card', name: 'Lux Home', description: 'Premium full-screen home dashboard with a live 3D pool.', preview: false });
+  window.customCards.push({ type: 'lux-home-card', name: 'Lux Home', description: 'Premium full-screen home dashboard with a live 3D pool and a 3D model of Owen\'s room.', preview: false });
   console.info(`%c LUX HOME %c ${LUX_VERSION} `, 'background:#111;color:#fff;border-radius:4px 0 0 4px;padding:2px 6px', 'background:#0a84ff;color:#fff;border-radius:0 4px 4px 0;padding:2px 6px');
 }
